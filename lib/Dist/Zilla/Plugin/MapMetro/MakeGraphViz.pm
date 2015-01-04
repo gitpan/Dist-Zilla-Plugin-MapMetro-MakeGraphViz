@@ -1,5 +1,5 @@
 package Dist::Zilla::Plugin::MapMetro::MakeGraphViz;
-$Dist::Zilla::Plugin::MapMetro::MakeGraphViz::VERSION = '0.1000';
+$Dist::Zilla::Plugin::MapMetro::MakeGraphViz::VERSION = '0.1100';
 use strict;
 use warnings;
 use 5.14.0;
@@ -7,17 +7,25 @@ use 5.14.0;
 use Moose;
 use namespace::sweep;
 use Path::Tiny;
-use Types::Standard qw/HashRef ArrayRef/;
-use Map::Metro;
+use MooseX::AttributeShortcuts;
+use Types::Standard qw/HashRef ArrayRef Str Maybe/;
+use Map::Metro::Shim;
 use GraphViz2;
 
 with 'Dist::Zilla::Role::AfterBuild';
+
+has cityname => (
+    is => 'rw',
+    isa => Maybe[Str],
+    predicate => 1,
+);
 
 has settings => (
     is => 'rw',
     isa => HashRef,
     traits => ['Hash'],
     init_arg => undef,
+    default => sub { { } },
     handles => {
         set_setting => 'set',
         get_setting => 'get',
@@ -28,6 +36,7 @@ has hidden_positions => (
     isa => ArrayRef,
     traits => ['Array'],
     init_arg => undef,
+    default => sub { [] },
     handles => {
         add_hidden => 'push',
         all_hiddens => 'elements',
@@ -38,16 +47,20 @@ has hidden_positions => (
 sub after_build {
     my $self = shift;
 
-    my @mapclasses = path('lib/Map/Metro/Plugin/Map')->children(qr/\.pm$/);
+    if(!$ENV{'MMVIZ'} && !$ENV{'MMVIZDEBUG'}) {
+        $self->log('Set either MMVIZ or MMVIZDEBUG to a true value to run this.');
+        return;
+    }
 
-    return if !scalar @mapclasses;
-    my $map = path(shift @mapclasses)->basename;
-    $map =~ s{\.pm$}{};
+    my @mapfiles = path('share')->children(qr{map-.*\.metro});
+    return if !scalar @mapfiles;
 
-    eval "use Map::Metro::Plugin::Map::$map";
-    return if $@;
     $self->log('Graphvizing...');
-    my $graph = Map::Metro->new($map)->parse;
+
+    my $mapfile = shift @mapfiles;
+    $mapfile =~ m{map-(.*)\.metro};
+    my $map = $1;
+    my $graph = Map::Metro::Shim->new(filepath => $mapfile)->parse;
 
     my $customconnections = {};
     if(path('share/graphviz.conf')->exists) {
@@ -89,7 +102,7 @@ sub after_build {
 
     my $viz = GraphViz2->new(
         global => { directed => 0 },
-        graph => { epsilon => 0.00001 },
+        graph => { epsilon => 0.00001, fontname => 'sans-serif', fontsize => 100, label => $self->has_cityname ? $self->cityname : ucfirst $map, labelloc => 'top' },
         node => { shape => 'circle', fixedsize => 'true', width => 0.8, height => 0.8, penwidth => 3, fontname => 'sans-serif', fontsize => 20 },
         edge => { penwidth => 5, len => 1.2 },
     );
@@ -122,7 +135,7 @@ sub after_build {
     foreach my $hidden ($self->all_hiddens) {
         $viz->add_node(name => ++$invisible_station_id,
                        label => '',
-                       ($ENV{'MMDEBUG'} ? () : (style => 'invis')),
+                       ($ENV{'MMVIZDEBUG'} ? () : (style => 'invis')),
                        width => 0.1,
                        height => 0.1,
                        penwidth => 5,
@@ -132,7 +145,7 @@ sub after_build {
         $viz->add_edge(from => $invisible_station_id,
                        to => $hidden->{'station_id'},
                        color => '#ff0000',
-                       penwidth => $ENV{'MMDEBUG'} ? 1 : 0,
+                       penwidth => $ENV{'MMVIZDEBUG'} ? 1 : 0,
                        len => 1,
                        weight => 100,
         );
@@ -152,7 +165,7 @@ sub after_build {
                 $viz->add_edge(from => $previous_station_id,
                                to => $invisible_station_id,
                                color => '#ff0000',
-                               penwidth => $ENV{'MMDEBUG'} ? 1 : 0,
+                               penwidth => $ENV{'MMVIZDEBUG'} ? 1 : 0,
                                len => $len,
                 );
 
@@ -162,7 +175,7 @@ sub after_build {
             $viz->add_edge(from => $previous_station_id,
                            to => $destination_station_id,
                            color => '#ff0000',
-                           penwidth => $ENV{'MMDEBUG'} ? 1 : 0,
+                           penwidth => $ENV{'MMVIZDEBUG'} ? 1 : 0,
                            len => $len,
             );
         }

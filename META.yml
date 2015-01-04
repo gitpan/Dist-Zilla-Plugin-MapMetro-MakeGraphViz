@@ -34,4 +34,4 @@ resources:
   bugtracker: https://github.com/Csson/p5-Dist-Zilla-Plugin-mapMetro-MakeGraphViz/issues
   homepage: https://github.com/Csson/p5-Dist-Zilla-Plugin-mapMetro-MakeGraphViz
   repository: https://github.com/Csson/p5-Dist-Zilla-Plugin-mapMetro-MakeGraphViz.git
-version: '0.1000'
+version: '0.1100'
